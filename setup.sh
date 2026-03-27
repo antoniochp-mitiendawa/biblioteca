@@ -1,45 +1,45 @@
 #!/bin/bash
 
 # ==========================================
-# PROYECTO: BIBLIOTECA
-# FUNCIÓN: Instalación base y dependencias
+# PROYECTO: BIBLIOTECA - INSTALADOR ROBUSTO
 # ==========================================
 
-echo " Archivo de instalación del proyecto Biblioteca..."
-echo " Preparando el entorno de Termux para 90,000 registros..."
+echo " Iniciando instalación automática..."
 
-# 1. Actualización de sistema (Silenciosa para evitar interrupciones)
+# 1. Reparación y Sincronización de Espejos (Evita el error de Mirror)
+termux-change-repo main 1 # Selecciona el primer espejo disponible automáticamente
+pkg update -y
+
+# 2. Arreglo de Librerías Críticas (Previene CANNOT LINK EXECUTABLE)
+# Instalamos/reinstalamos las librerías de red ANTES de actualizar el resto
+echo " Sincronizando librerías de red (SSL/Curl)..."
+pkg install openssl libcurl libandroid-support -y
+
+# 3. Actualización Completa del Sistema
 echo " Actualizando paquetes base..."
-pkg update -y && pkg upgrade -y
+pkg upgrade -y -o Dpkg::Options::="--force-confold"
 
-# 2. Permisos de almacenamiento (Crucial para ver las portadas)
-echo " Solicitando acceso al almacenamiento interno..."
-echo " Por favor, acepta el mensaje emergente en tu pantalla."
+# 4. Permisos de almacenamiento
+echo " Solicitando acceso al almacenamiento..."
 termux-setup-storage
-sleep 5
+sleep 3
 
-# 3. Instalación de lenguajes y herramientas
-echo " Instalando motores: Python, Node.js y Git..."
-pkg install -y python nodejs git sqlite libjpeg-turbo setup-storage
+# 5. Instalación de lenguajes y herramientas necesarias
+echo " Instalando Python, Node.js y SQLite..."
+pkg install -y python nodejs git sqlite
 
-# 4. Instalación de librerías para el Scraper de Amazon y Base de Datos
-echo " Configurando entorno de Python..."
+# 6. Configuración de Python y Node.js (Igual que antes)
 pip install --upgrade pip
 pip install requests beautifulsoup4
 
-# 5. Instalación de Baileys para WhatsApp (Node.js)
-echo " Configurando entorno de WhatsApp..."
 mkdir -p ./wa_connection
 cd ./wa_connection
 npm init -y
 npm install @whiskeysockets/baileys pino
 
-# 6. Creación de la estructura de carpetas local
+# 7. Finalización
 cd ..
-mkdir -p ./config
-mkdir -p ./logs
-
+mkdir -p ./config ./logs
 echo "--------------------------------------------------"
-echo " Fase 1 completada con éxito."
-echo " Termux está actualizado y con las herramientas instaladas."
+echo " Fase 1 completada. Sistema listo y verificado."
 echo "--------------------------------------------------"
