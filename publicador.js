@@ -3,66 +3,77 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const pino = require("pino");
 
-// Función para elegir una opción aleatoria de un array (Spintax)
 const spintax = (opciones) => opciones[Math.floor(Math.random() * opciones.length)];
 
-async function ejecutarPublicador() {
-    const { state } = await useMultiFileAuthState('auth_info');
-    const socket = makeWASocket({ logger: pino({ level: 'silent' }), auth: state });
+async function iniciarPublicador() {
+    const { state } = await useMultiFileAuthState('auth_info_sesion');
+    const socket = makeWASocket({ 
+        logger: pino({ level: 'silent' }), 
+        auth: state,
+        browser: ["Ubuntu", "Chrome", "20.0.04"]
+    });
 
     const db = new sqlite3.Database('./biblioteca.db');
 
+    // Intervalo de revisión cada 15 minutos (ajustable)
     setInterval(async () => {
         const ahora = new Date();
         const horaActual = ahora.getHours();
 
-        // 1. Obtener configuraciones de la DB
-        db.get("SELECT valor FROM ajustes WHERE clave='hora_inicio'", (err, hInicio) => {
-            db.get("SELECT valor FROM ajustes WHERE clave='hora_fin'", (err, hFin) => {
+        // 1. Obtener Configuración de Horarios
+        db.get("SELECT valor FROM ajustes WHERE clave='hora_inicio'", (err, rowIni) => {
+            db.get("SELECT valor FROM ajustes WHERE clave='hora_fin'", (err, rowFin) => {
                 
-                // 2. Verificar si estamos en horario de publicación
-                if (horaActual >= parseInt(hInicio.valor) && horaActual < parseInt(hFin.valor)) {
+                if (rowIni && rowFin && horaActual >= parseInt(rowIni.valor) && horaActual < parseInt(rowFin.valor)) {
                     
-                    // 3. Buscar un libro verificado que no haya sido publicado
+                    // 2. Buscar un libro verificado que no se haya publicado aún
                     db.get("SELECT * FROM inventario WHERE estado='verificado' ORDER BY RANDOM() LIMIT 1", async (err, libro) => {
                         if (libro && libro.amazon_link) {
                             
-                            // 4. Construir el mensaje con Spintax
-                            const saludo = spintax(["¿Ya conoces este libro?", "¿Buscas tu próxima lectura?", "¡Mira esta recomendación!", "¡Atención lectores!"]);
-                            const cuerpo = spintax(["Te presentamos", "Aquí tienes", "No te pierdas", "Te compartimos"]);
-                            const accion = spintax(["Puedes encontrarlo en Amazon aquí:", "Adquiérelo directamente aquí:", "Te dejo el enlace para obtenerlo:", "Disponible en este link:"]);
-                            const emoji = spintax(["📚", "📖", "✨", "🔥", "✅"]);
+                            // 3. Verificar que la imagen existe físicamente en /sdcard/
+                            if (fs.existsSync(libro.ruta_completa)) {
+                                
+                                // 4. Construir Mensaje Spintax
+                                const saludo = spintax(["¿Buscas lectura?", "¡Recomendación del día!", "Check de hoy:", "Para tu colección:"]);
+                                const accion = spintax(["Consíguelo aquí:", "Link de Amazon:", "Adquiérelo en este enlace:", "Disponible aquí:"]);
+                                const emoji = spintax(["📚", "🔥", "✨", "🎸", "📖"]);
 
-                            const mensajeFinal = `${saludo} ${emoji}\n\n${cuerpo} *"${libro.nombre_archivo.split('.')[0]}"*.\n\n${accion}\n${libro.amazon_link}`;
+                                const textoFinal = `${emoji} *${saludo}*\n\n📖 *Libro:* ${libro.nombre_archivo.split('.')[0]}\n\n${accion}\n${libro.amazon_link}`;
 
-                            // 5. Obtener el ID del Canal guardado
-                            db.get("SELECT valor FROM ajustes WHERE clave='canal_id'", async (err, canal) => {
-                                if (canal) {
-                                    try {
-                                        // Enviar imagen + texto
-                                        await socket.sendMessage(canal.valor, { 
-                                            image: { url: libro.ruta_completa }, 
-                                            caption: mensajeFinal 
-                                        });
-                                        
-                                        // Marcar como publicado para no repetir
-                                        db.run("UPDATE inventario SET estado='publicado' WHERE id=?", [libro.id]);
-                                        console.log(`✅ Publicado: ${libro.nombre_archivo}`);
-                                    } catch (e) {
-                                        console.log("❌ Error al enviar mensaje: ", e);
+                                // 5. Enviar al Canal
+                                db.get("SELECT valor FROM ajustes WHERE clave='canal_id'", async (err, canal) => {
+                                    if (canal && canal.valor) {
+                                        try {
+                                            await socket.sendMessage(canal.valor, { 
+                                                image: { url: libro.ruta_completa }, 
+                                                caption: textoFinal 
+                                            });
+                                            
+                                            // 6. Marcar como publicado
+                                            db.run("UPDATE inventario SET estado='publicado' WHERE id=?", [libro.id]);
+                                            console.log(`✅ Publicado con éxito: ${libro.nombre_archivo}`);
+                                        } catch (e) {
+                                            console.log("❌ Error al enviar al canal:", e.message);
+                                        }
                                     }
-                                }
-                            });
+                                });
+                            } else {
+                                // Si la foto no existe, la marcamos para no intentar de nuevo
+                                db.run("UPDATE inventario SET estado='error_archivo' WHERE id=?", [libro.id]);
+                            }
                         }
                     });
                 } else {
-                    console.log("🕒 Fuera de horario. El bot está en pausa.");
+                    console.log("🕒 Modo espera: Fuera del horario de publicación configurado.");
                 }
             });
         });
-    }, 1000 * 60 * 30); // Se ejecuta cada 30 minutos (ajustable)
+    }, 1000 * 60 * 15); // 15 minutos entre publicaciones
 }
 
 socket.ev.on('connection.update', (update) => {
-    if (update.connection === 'open') ejecutarPublicador();
+    if (update.connection === 'open') {
+        console.log("🚀 Publicador activo y escaneando base de datos...");
+        iniciarPublicador();
+    }
 });
