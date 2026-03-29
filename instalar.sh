@@ -1,43 +1,43 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Evitar que Termux pregunte por versiones de archivos de configuración
+# Configuración de no-interacción y limpieza de repositorios
 export DEBIAN_FRONTEND=noninteractive
+echo "--- INICIANDO INSTALACIÓN AUTOMÁTICA DE BIBLIOTECA ---"
 
-echo "--- CONFIGURADOR DE BIBLIOTECA AUTOMÁTICA ---"
+# Intentar corregir mirrors automáticamente si fallan
+termux-change-repo <<EOF
+1
+2
+EOF
 
-# 1. Permisos de almacenamiento
-termux-setup-storage
-
-# 2. Actualización e instalación de núcleos (Forzando respuesta 'y' a todo)
+# Actualización e Instalación de herramientas base
 pkg update -y -o Dpkg::Options::="--force-confnew"
 pkg upgrade -y -o Dpkg::Options::="--force-confnew"
 pkg install -y nodejs python python-pip sqlite libjpeg-turbo git -o Dpkg::Options::="--force-confnew"
 
-echo "Instalando librerías adicionales..."
-
-# 3. Preguntas de Configuración (Ahora sí se detendrá aquí)
+# Solicitar datos al usuario (Paso interactivo necesario)
 echo "------------------------------------------------"
-read -p "Introduce tu Amazon Tag de Afiliado (ej: tuid-21): " AMAZON_TAG
-read -p "Introduce tu número de teléfono (ej: 52155...): " TELEFONO
-read -p "Introduce los nombres de tus carpetas (separados por coma): " CARPETAS
+read -p "Introduce tu Amazon Tag (ej: tuid-21): " AMZ_TAG
+read -p "Introduce tu número de WhatsApp (ej: 52155...): " WHATS_NUM
+read -p "Nombres de tus carpetas (separadas por coma): " FOLDERS
 echo "------------------------------------------------"
 
-# 4. Guardar configuración
+# Guardar configuración persistente
 cat <<EOF > .env_config
-AMAZON_TAG="$AMAZON_TAG"
-USER_PHONE="$TELEFONO"
-BOOK_FOLDERS="$CARPETAS"
+AMAZON_TAG="$AMZ_TAG"
+USER_PHONE="$WHATS_NUM"
+BOOK_FOLDERS="$FOLDERS"
 EOF
 
-# 5. Instalación de dependencias de Node y Python
+# Instalación de librerías para el Bot y Amazon
 npm init -y
 npm install @whiskeysockets/baileys pino libsignal-node
 pip install requests beautifulsoup4 --break-system-packages
 
-# 6. Crear base de datos
-sqlite3 registro.db "CREATE TABLE IF NOT EXISTS publicado (id INTEGER PRIMARY KEY, folder TEXT, filename TEXT, amazon_url TEXT);"
+# Crear base de datos para control de publicaciones
+sqlite3 registro.db "CREATE TABLE IF NOT EXISTS publicado (id INTEGER PRIMARY KEY, folder TEXT, filename TEXT, fecha TEXT);"
 
 echo "------------------------------------------------"
-echo "Instalación completada correctamente."
-echo "Escribe 'node main.js' para iniciar el bot."
+echo "INSTALACIÓN COMPLETADA."
+echo "Escribe: node main.js para iniciar la vinculación."
 echo "------------------------------------------------"
