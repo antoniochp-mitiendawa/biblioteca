@@ -3,7 +3,7 @@ const pino = require("pino");
 const { execSync } = require("child_process");
 const fs = require("fs");
 
-// Cargar configuración generada en el instalar.sh
+// Cargar variables configuradas
 const config = fs.readFileSync('.env_config', 'utf8').split('\n').reduce((acc, line) => {
     const [key, val] = line.split('=');
     if (key && val) acc[key] = val.trim().replace(/"/g, '');
@@ -19,37 +19,33 @@ async function startBot() {
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: "silent" }),
-        // MODO SORDO: Solo interactúa con el canal configurado
+        // MODO SORDO: Filtra mensajes para enfocarse solo en el canal
         shouldIgnoreJid: (jid) => (global.canalID && jid !== global.canalID) || jid.includes('@g.us')
     });
 
     sock.ev.on("creds.update", saveCreds);
 
-    // PASO 1: SOLICITAR CÓDIGO DE EMPAREJAMIENTO (Solo si no está registrado)
+    // 1. SOLICITUD DE CÓDIGO (Solo si no está vinculado)
     if (!sock.authState.creds.registered) {
-        if (!config.USER_PHONE) {
-            console.log("❌ ERROR: No se encontró el número de teléfono en la configuración.");
-            process.exit(1);
-        }
-        console.log(`Solicitando código para: ${config.USER_PHONE}...`);
-        await delay(6000); 
+        console.log(`Estableciendo conexión para: ${config.USER_PHONE}...`);
+        await delay(7000); 
         try {
             let code = await sock.requestPairingCode(config.USER_PHONE);
             console.log("\x1b[42m\x1b[30m%s\x1b[0m", `\n TU CÓDIGO DE VINCULACIÓN ES: ${code} \n`);
         } catch (err) {
-            console.log("Error de conexión. Reintenta ejecutando 'node main.js'");
+            console.log("Error de conexión al generar código. Ejecuta 'node main.js' para reintentar.");
         }
     }
 
-    // PASO 2: CONFIRMAR VINCULACIÓN
+    // 2. DETECTAR VINCULACIÓN
     sock.ev.on("connection.update", (upd) => {
         if (upd.connection === "open") {
-            console.log("✅ VINCULADO CORRECTAMENTE.");
-            console.log("⚠️ ESPERANDO TU MENSAJE EN EL CANAL PARA CAPTURAR EL ID...");
+            console.log("✅ VINCULADO CON ÉXITO.");
+            console.log("⚠️ POR FAVOR, ENVÍA UN MENSAJE AL CANAL DE WHATSAPP AHORA.");
         }
     });
 
-    // PASO 3: CAPTURAR ID DEL CANAL Y DISPARAR PRUEBA
+    // 3. CAPTURAR CANAL Y DISPARAR PRUEBA
     sock.ev.on("messages.upsert", async (m) => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
@@ -57,13 +53,13 @@ async function startBot() {
         if (!global.canalID) {
             global.canalID = msg.key.remoteJid;
             console.log(`🚀 CANAL DETECTADO: ${global.canalID}`);
-            console.log("Iniciando verificación en Amazon y publicación de prueba...");
-            dispararPrueba(sock);
+            console.log("Iniciando validación y publicación de prueba...");
+            ejecutarPrueba(sock);
         }
     });
 }
 
-async function dispararPrueba(sock) {
+async function ejecutarPrueba(sock) {
     const carpetas = config.BOOK_FOLDERS.split(',');
     for (let carpeta of carpetas) {
         const ruta = `/sdcard/${carpeta.trim()}/`;
@@ -72,27 +68,25 @@ async function dispararPrueba(sock) {
             if (archivos.length > 0) {
                 const foto = archivos[0];
                 try {
-                    // Consultar Python para Amazon
                     const resultado = execSync(`python3 amazon.py "${foto}" "${config.AMAZON_TAG}"`).toString();
                     const [link, precio] = resultado.split('|');
 
                     if (link !== "ERROR") {
-                        const mensaje = `📚 *RECOMENDACIÓN BIBLIÓFILA*\n\n📖 *Título:* ${foto.split('.')[0]}\n💰 *Precio:* ${precio.trim()}\n\n🛒 *Enlace de compra:*\n${link.trim()}`;
+                        const mensaje = `📚 *RECOMENDACIÓN DEL DÍA*\n\n📖 *Título:* ${foto.split('.')[0]}\n💰 *Precio:* ${precio.trim()}\n\n🛒 *Link de Amazon:*\n${link.trim()}`;
                         
                         await sock.sendMessage(global.canalID, { 
                             image: { url: ruta + foto }, 
                             caption: mensaje 
                         });
-                        console.log("✅ PRUEBA EXITOSA: Publicación enviada al canal.");
+                        console.log("✅ PRUEBA COMPLETADA: Mensaje enviado al canal.");
                         return;
                     }
                 } catch (e) {
-                    console.log("Error al procesar el libro con Amazon.");
+                    console.log("Error consultando Amazon.");
                 }
             }
         }
     }
-    console.log("No se encontraron libros para la prueba en las carpetas indicadas.");
 }
 
 startBot();
