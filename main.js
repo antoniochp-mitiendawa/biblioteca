@@ -3,7 +3,7 @@ const pino = require("pino");
 const { execSync } = require("child_process");
 const fs = require("fs");
 
-// Cargar variables configuradas
+// Cargar configuración guardada
 const config = fs.readFileSync('.env_config', 'utf8').split('\n').reduce((acc, line) => {
     const [key, val] = line.split('=');
     if (key && val) acc[key] = val.trim().replace(/"/g, '');
@@ -19,33 +19,33 @@ async function startBot() {
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: "silent" }),
-        // MODO SORDO: Filtra mensajes para enfocarse solo en el canal
+        // MODO SORDO: Solo escucha el canal una vez capturado
         shouldIgnoreJid: (jid) => (global.canalID && jid !== global.canalID) || jid.includes('@g.us')
     });
 
     sock.ev.on("creds.update", saveCreds);
 
-    // 1. SOLICITUD DE CÓDIGO (Solo si no está vinculado)
+    // PASO: SOLICITAR VINCULACIÓN CON EL NÚMERO INGRESADO
     if (!sock.authState.creds.registered) {
-        console.log(`Estableciendo conexión para: ${config.USER_PHONE}...`);
+        console.log(`Estableciendo conexión para el número: ${config.USER_PHONE}...`);
         await delay(7000); 
         try {
             let code = await sock.requestPairingCode(config.USER_PHONE);
             console.log("\x1b[42m\x1b[30m%s\x1b[0m", `\n TU CÓDIGO DE VINCULACIÓN ES: ${code} \n`);
         } catch (err) {
-            console.log("Error de conexión al generar código. Ejecuta 'node main.js' para reintentar.");
+            console.log("Error al generar código. Ejecuta 'node main.js' de nuevo.");
         }
     }
 
-    // 2. DETECTAR VINCULACIÓN
+    // PASO: CONFIRMACIÓN DE CONEXIÓN
     sock.ev.on("connection.update", (upd) => {
         if (upd.connection === "open") {
-            console.log("✅ VINCULADO CON ÉXITO.");
-            console.log("⚠️ POR FAVOR, ENVÍA UN MENSAJE AL CANAL DE WHATSAPP AHORA.");
+            console.log("✅ WHATSAPP VINCULADO.");
+            console.log("⚠️ POR FAVOR, ENVÍA UN MENSAJE A TU CANAL DE WHATSAPP AHORA.");
         }
     });
 
-    // 3. CAPTURAR CANAL Y DISPARAR PRUEBA
+    // PASO: CAPTURAR ID DEL CANAL Y LANZAR PRUEBA
     sock.ev.on("messages.upsert", async (m) => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
@@ -53,7 +53,7 @@ async function startBot() {
         if (!global.canalID) {
             global.canalID = msg.key.remoteJid;
             console.log(`🚀 CANAL DETECTADO: ${global.canalID}`);
-            console.log("Iniciando validación y publicación de prueba...");
+            console.log("Realizando prueba de publicación en el canal...");
             ejecutarPrueba(sock);
         }
     });
@@ -72,18 +72,16 @@ async function ejecutarPrueba(sock) {
                     const [link, precio] = resultado.split('|');
 
                     if (link !== "ERROR") {
-                        const mensaje = `📚 *RECOMENDACIÓN DEL DÍA*\n\n📖 *Título:* ${foto.split('.')[0]}\n💰 *Precio:* ${precio.trim()}\n\n🛒 *Link de Amazon:*\n${link.trim()}`;
+                        const texto = `📚 *RECOMENDACIÓN DEL DÍA*\n\n📖 *Título:* ${foto.split('.')[0]}\n💰 *Precio:* ${precio.trim()}\n\n🛒 *Cómpralo aquí en Amazon:*\n${link.trim()}`;
                         
                         await sock.sendMessage(global.canalID, { 
                             image: { url: ruta + foto }, 
-                            caption: mensaje 
+                            caption: texto 
                         });
-                        console.log("✅ PRUEBA COMPLETADA: Mensaje enviado al canal.");
+                        console.log("✅ PRUEBA EXITOSA: Publicación enviada.");
                         return;
                     }
-                } catch (e) {
-                    console.log("Error consultando Amazon.");
-                }
+                } catch (e) { console.log("Error en Amazon."); }
             }
         }
     }
