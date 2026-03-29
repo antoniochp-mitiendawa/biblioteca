@@ -3,19 +3,13 @@ import requests
 from bs4 import BeautifulSoup
 
 def buscar_libro(archivo, tag):
-    # Limpieza de nombre de archivo para búsqueda efectiva
     query = archivo.replace('_', ' ').replace('-', ' ').split('.')[0]
     url = f"https://www.amazon.es/s?k={query}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     try:
         r = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
-        # Localizar primer resultado de producto
         item = soup.find("a", {"class": "a-link-normal s-no-outline"})
-        
         if item:
             link_final = "https://www.amazon.es" + item['href'] + f"&tag={tag}"
             precio_tag = soup.find("span", {"class": "a-offscreen"})
